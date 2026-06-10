@@ -15,6 +15,7 @@
 #include <future>
 #include <condition_variable>
 #include <atomic>
+#include <numeric>
 
 using namespace clique;
 
@@ -194,13 +195,14 @@ namespace
             {
                 // do we enqueue or recurse?
                 bool should_expand = true;
+                const auto cn = static_cast<unsigned>(c.size()) + colours[n];
 
                 if (maybe_queue && c.size() == params.split_depth) {
-                    maybe_queue->enqueue_blocking(QueueItem{ c, std::move(new_o), c.size() + colours[n] }, params.n_threads);
+                    maybe_queue->enqueue_blocking(QueueItem{ c, std::move(new_o), cn }, params.n_threads);
                     should_expand = false;
                 }
                 else if (donation_queue && (chose_to_donate || donation_queue->want_donations())) {
-                    donation_queue->enqueue(QueueItem{ c, std::move(new_o), c.size() + colours[n] });
+                    donation_queue->enqueue(QueueItem{ c, std::move(new_o), cn });
                     should_expand = false;
                     chose_to_donate = true;
                     ++result.donations;
@@ -316,4 +318,3 @@ auto clique::tmcsa1_atomic_max_clique(const Graph & graph, const MaxCliqueParams
 {
     return max_clique<AtomicBestAnywhere>(graph, params);
 }
-

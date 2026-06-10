@@ -1,6 +1,7 @@
 all : max_clique queue_test
 
-CXX = g++-4.7
+# CXX = g++-4.7
+CXX = g++
 override CXXFLAGS += -O3 -march=native -std=c++11 -I./ -W -Wall -g -ggdb3
 override LDFLAGS += `if test -f \`$(CXX) --print-file-name=libboost_thread-mt.so\` ; \
 	   then echo -lboost_regex-mt -lboost_thread-mt -lboost_system-mt -lboost_program_options-mt ; \

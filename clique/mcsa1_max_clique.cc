@@ -4,6 +4,7 @@
 #include <clique/degree_sort.hh>
 #include <clique/colourise.hh>
 #include <algorithm>
+#include <numeric>
 
 using namespace clique;
 
@@ -80,4 +81,3 @@ auto clique::mcsa1_max_clique(const Graph & graph, const MaxCliqueParams & param
 
     return result;
 }
-

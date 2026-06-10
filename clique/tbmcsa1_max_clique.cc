@@ -15,6 +15,7 @@
 #include <future>
 #include <condition_variable>
 #include <atomic>
+#include <numeric>
 
 using namespace clique;
 
@@ -291,4 +292,3 @@ auto clique::tbmcsa1_max_clique(const Graph & graph, const MaxCliqueParams & par
     else
         throw GraphTooBig();
 }
-

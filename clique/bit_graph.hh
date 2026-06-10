@@ -14,8 +14,17 @@ namespace clique
     /// We'll use an array of unsigned long longs to represent our bits.
     using BitWord = unsigned long long;
 
-    /// Number of bits per word.
-    static const constexpr int bits_per_word = sizeof(BitWord) * 8;
+    /**
+     * Compile-time constants used in public template signatures.
+     *
+     * Keep these as a named enum so C++11 does not give the template
+     * signatures translation-unit-local linkage.
+     */
+    enum BitGraphConstant : int
+    {
+        bits_per_word = sizeof(BitWord) * 8,
+        max_graph_words = 256
+    };
 
     /**
      * A bitset with a fixed maximum size. This only provides the operations
@@ -214,12 +223,6 @@ namespace clique
                 p.intersect_with_complement(_adjacency[row]);
             }
     };
-
-    /**
-     * We have to decide at compile time what the largest graph we'll support
-     * is.
-     */
-    constexpr auto max_graph_words __attribute__((unused)) = 256;
 
     /**
      * Thrown if we exceed max_graph_words.

@@ -3,6 +3,7 @@
 #include <clique/naive_max_clique.hh>
 #include <boost/range/adaptors.hpp>
 #include <algorithm>
+#include <numeric>
 
 using namespace clique;
 
@@ -76,4 +77,3 @@ auto clique::naive_max_clique(const Graph & graph, const MaxCliqueParams & param
 
     return result;
 }
-

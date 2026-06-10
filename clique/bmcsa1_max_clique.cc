@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <mutex>
+#include <numeric>
 
 using namespace clique;
 
@@ -135,4 +136,3 @@ auto clique::bmcsa1_max_clique(const Graph & graph, const MaxCliqueParams & para
     else
         throw GraphTooBig();
 }
-

@@ -56,7 +56,7 @@ auto clique::make_buckets(const int size) -> Buckets
     buckets.resize(size);
     for (auto & bucket : buckets)
         bucket.reserve(size);
-    return std::move(buckets);
+    return buckets;
 }
 
 template <unsigned size_>
@@ -114,4 +114,3 @@ template auto clique::colourise(const FixedBitGraph<128> & graph, const FixedBit
         std::array<unsigned, 128 * bits_per_word> & result) -> void;
 template auto clique::colourise(const FixedBitGraph<256> & graph, const FixedBitSet<256> & p, std::array<unsigned, 256 * bits_per_word> & p_order,
         std::array<unsigned, 256 * bits_per_word> & result) -> void;
-
