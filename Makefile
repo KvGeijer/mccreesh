@@ -3,10 +3,7 @@ all : max_clique queue_test
 # CXX = g++-4.7
 CXX = g++
 override CXXFLAGS += -O3 -march=native -std=c++11 -I./ -W -Wall -g -ggdb3
-override LDFLAGS += `if test -f \`$(CXX) --print-file-name=libboost_thread-mt.so\` ; \
-	   then echo -lboost_regex-mt -lboost_thread-mt -lboost_system-mt -lboost_program_options-mt ; \
-	   else echo -lboost_regex -lboost_thread -lboost_system -lboost_program_options ; fi` \
-	   -lrt
+override LDLIBS += -lboost_regex -lboost_thread -lboost_program_options -pthread -lrt
 
 FILES = clique/graph \
 	clique/bit_graph \
@@ -30,10 +27,10 @@ $(OBJECTS) : %.o : %.cc $(HEADERS)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 max_clique : $(CLIQUEOBJECTS) max_clique.o
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDLIBS)
 
 queue_test : $(CLIQUEOBJECTS) queue_test.o
-	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDLIBS)
 
 clean :
 	rm -f $(OBJECTS) max_clique queue_test
