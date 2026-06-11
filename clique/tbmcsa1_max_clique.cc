@@ -99,62 +99,83 @@ namespace
             FixedBitSet<size_> & p,                          // potential additions
             MaxCliqueResult & result,
             const MaxCliqueParams & params,
-            std::vector<FixedBitSet<size_> > & p_alloc,      // pre-allocated space for p
             AtomicBestAnywhere & best_anywhere) -> void
     {
-        ++result.nodes;
+        std::vector<QueueItem<size_> > stack;
+        stack.push_back(QueueItem<size_>{ c, p, c.popcount() + p.popcount() });
 
-        // get our coloured vertices
-        std::array<unsigned, size_ * bits_per_word> p_order, colours;
-        colourise<size_>(graph, p, p_order, colours);
+        while (! stack.empty()) {
+            QueueItem<size_> item = std::move(stack.back());
+            stack.pop_back();
 
-        auto c_popcount = c.popcount();
-
-        bool chose_to_donate = false;
-
-        // for each v in p... (v comes later)
-        for (int n = p.popcount() - 1 ; n >= 0 ; --n) {
-
-            // bound, timeout or early exit?
-            if (bound(c_popcount, colours[n], params, best_anywhere) || params.abort.load())
+            if (params.abort.load())
                 return;
 
-            auto v = p_order[n];
+            ++result.nodes;
 
-            // consider taking v
-            c.set(v);
+            unsigned best_anywhere_value = best_anywhere.get();
+            if (best_anywhere_value >= params.stop_after_finding)
+                return;
+            if (item.cn <= best_anywhere_value)
+                continue;
 
-            // filter p to contain vertices adjacent to v
-            auto & new_p = p_alloc[c_popcount];
-            new_p = p;
-            graph.intersect_with_row(v, new_p);
+            // get our coloured vertices
+            std::array<unsigned, size_ * bits_per_word> p_order, colours;
+            colourise<size_>(graph, item.p, p_order, colours);
 
-            if (new_p.empty()) {
-                found_possible_new_best(graph, o, c, c_popcount + 1, params, result, best_anywhere);
-            }
-            else
-            {
-                // do we enqueue or recurse?
-                bool should_expand = true;
+            const auto c_popcount = item.c.popcount();
+            bool chose_to_donate = false;
 
-                if (maybe_queue && c_popcount + 1 == params.split_depth) {
-                    maybe_queue->enqueue_blocking(QueueItem<size_>{ c, std::move(new_p), c.popcount() + colours[n] }, params.n_threads);
-                    should_expand = false;
+            std::vector<QueueItem<size_> > children;
+            children.reserve(item.p.popcount());
+
+            // for each v in p... (v comes later)
+            for (int n = static_cast<int>(item.p.popcount()) - 1 ; n >= 0 ; --n) {
+
+                // bound, timeout or early exit?
+                if (params.abort.load())
+                    return;
+                if (bound(c_popcount, colours[n], params, best_anywhere))
+                    break;
+
+                auto v = p_order[n];
+
+                // consider taking v
+                FixedBitSet<size_> child_c = item.c;
+                child_c.set(v);
+                const auto child_c_popcount = c_popcount + 1;
+
+                // filter p to contain vertices adjacent to v
+                FixedBitSet<size_> new_p = item.p;
+                graph.intersect_with_row(v, new_p);
+
+                if (new_p.empty()) {
+                    found_possible_new_best(graph, o, child_c, child_c_popcount, params, result, best_anywhere);
                 }
-                else if (donation_queue && (chose_to_donate || donation_queue->want_donations())) {
-                    donation_queue->enqueue(QueueItem<size_>{ c, std::move(new_p), c.popcount() + colours[n] });
-                    should_expand = false;
-                    chose_to_donate = true;
-                    ++result.donations;
+                else
+                {
+                    const auto cn = child_c_popcount + colours[n];
+
+                    if (maybe_queue && child_c_popcount == params.split_depth) {
+                        maybe_queue->enqueue_blocking(QueueItem<size_>{ child_c, std::move(new_p), cn }, params.n_threads);
+                    }
+                    else if (donation_queue && (chose_to_donate || donation_queue->want_donations())) {
+                        donation_queue->enqueue(QueueItem<size_>{ child_c, std::move(new_p), cn });
+                        chose_to_donate = true;
+                        ++result.donations;
+                    }
+                    else {
+                        children.push_back(QueueItem<size_>{ child_c, std::move(new_p), cn });
+                    }
                 }
 
-                if (should_expand)
-                    expand<size_>(graph, o, maybe_queue, donation_queue, c, new_p, result, params, p_alloc, best_anywhere);
+                // now consider not taking v
+                item.p.unset(v);
             }
 
-            // now consider not taking v
-            c.unset(v);
-            p.unset(v);
+            // Preserve the old recursive DFS order with a LIFO stack.
+            for (auto child = children.rbegin() ; child != children.rend() ; ++child)
+                stack.push_back(std::move(*child));
         }
     }
 
@@ -182,13 +203,8 @@ namespace
                     tp.resize(graph.size());
                     tp.set_all();
 
-                    std::vector<FixedBitSet<size_> > p_alloc;
-                    p_alloc.resize(graph.size());
-                    for (auto & a : p_alloc)
-                        a.resize(graph.size());
-
                     // populate!
-                    expand<size_>(graph, o, &queue, nullptr, tc, tp, result, params, p_alloc, best_anywhere);
+                    expand<size_>(graph, o, &queue, nullptr, tc, tp, result, params, best_anywhere);
 
                     // merge results
                     queue.initial_producer_done();
@@ -203,11 +219,6 @@ namespace
 
                         MaxCliqueResult tr; // local result
 
-                        std::vector<FixedBitSet<size_> > p_alloc;
-                        p_alloc.resize(graph.size());
-                        for (auto & a : p_alloc)
-                            a.resize(graph.size());
-
                         while (true) {
                             // get some work to do
                             QueueItem<size_> args;
@@ -220,7 +231,7 @@ namespace
 
                             // do some work
                             expand<size_>(graph, o, nullptr, params.work_donation ? &queue : nullptr,
-                                    args.c, args.p, tr, params, p_alloc, best_anywhere);
+                                    args.c, args.p, tr, params, best_anywhere);
 
                             // keep track of top nodes done
                             if (! params.abort.load())
