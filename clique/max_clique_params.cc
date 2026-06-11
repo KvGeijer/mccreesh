@@ -15,6 +15,7 @@ auto clique::print_candidate(const MaxCliqueParams & params, unsigned size) -> v
 auto MaxCliqueResult::merge(const MaxCliqueResult & other) -> void
 {
     nodes += other.nodes;
+    processed_nodes += other.processed_nodes;
     donations += other.donations;
     top_nodes_done += other.top_nodes_done;
     if (other.size > size) {
@@ -22,4 +23,3 @@ auto MaxCliqueResult::merge(const MaxCliqueResult & other) -> void
         members = std::move(other.members);
     }
 }
-

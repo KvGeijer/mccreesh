@@ -204,6 +204,13 @@ auto main(int argc, char * argv[]) -> int
         }
         std::cout << std::endl;
 
+        if (! result.thread_processed_nodes.empty()) {
+            std::cout << result.processed_nodes;
+            for (auto n : result.thread_processed_nodes)
+                std::cout << " " << n;
+            std::cout << std::endl;
+        }
+
         if (params.work_donation)
             std::cout << result.donations << std::endl;
 
@@ -219,4 +226,3 @@ auto main(int argc, char * argv[]) -> int
         return EXIT_FAILURE;
     }
 }
-

@@ -62,6 +62,13 @@ namespace clique
         /// Total number of nodes processed.
         unsigned long long nodes = 0;
 
+        /// Nodes processed, excluding nodes cut immediately by the incumbent.
+        unsigned long long processed_nodes = 0;
+
+        /// Per-worker processed-node counts, in the same order as per-worker
+        /// runtimes.
+        std::list<unsigned long long> thread_processed_nodes = { };
+
         /// Number of times work donation occurred.
         unsigned donations = 0;
 

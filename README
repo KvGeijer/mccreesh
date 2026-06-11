@@ -17,12 +17,18 @@ The output is as follows:
     size_of_max_clique number_of_nodes
     witness
     runtimes
+    processed_node_counts
 
 Where the first runtime is the overall time (excluding reading in the graph) in
 steady-clock ms, and any additional values are per-thread runtimes.
 
-If work donation is enabled, a fourth line will show how many times this
-happened. If a timeout is specified, the first line will also say 'aborted n',
-where n is the number of queued nodes processed to completion.
+For tbmcsa1, the processed-node-count line has the same shape as the runtime
+line: the first value is the total, and the remaining values are per-worker
+counts in the same order as the per-worker runtimes. Nodes cut immediately by
+the incumbent are not counted on this line.
+
+If work donation is enabled, an additional final line will show how many times
+this happened. If a timeout is specified, the first line will also say
+'aborted n', where n is the number of queued nodes processed to completion.
 
 .. vim: set ft=plain spell spelllang=en ft=text :

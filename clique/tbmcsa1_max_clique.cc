@@ -118,6 +118,7 @@ namespace
                 return;
             if (item.cn <= best_anywhere_value)
                 continue;
+            ++result.processed_nodes;
 
             // get our coloured vertices
             std::array<unsigned, size_ * bits_per_word> p_order, colours;
@@ -204,7 +205,7 @@ namespace
                     tp.set_all();
 
                     // populate!
-                    expand<size_>(graph, o, &queue, nullptr, tc, tp, result, params, best_anywhere);
+                    expand<size_>(graph, o, &queue, nullptr, tc, tp, tr, params, best_anywhere);
 
                     // merge results
                     queue.initial_producer_done();
@@ -245,6 +246,7 @@ namespace
                             std::unique_lock<std::mutex> guard(result_mutex);
                             result.merge(tr);
                             result.times.push_back(overall_time);
+                            result.thread_processed_nodes.push_back(tr.processed_nodes);
                         }
                         }));
         }
