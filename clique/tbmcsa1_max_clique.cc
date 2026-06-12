@@ -3,7 +3,9 @@
 #include <clique/tbmcsa1_max_clique.hh>
 #include <clique/degree_sort.hh>
 #include <clique/colourise.hh>
-#include <clique/queue.hh>
+
+#include <2d-stack/wrapper.hpp>
+#include <termination_detection.hpp>
 
 #include <boost/thread.hpp>
 
@@ -15,7 +17,9 @@
 #include <future>
 #include <condition_variable>
 #include <atomic>
+#include <memory>
 #include <numeric>
+#include <utility>
 
 using namespace clique;
 
@@ -90,100 +94,78 @@ namespace
     }
 
     template <unsigned size_>
-    auto expand(
+    auto push_work(TwoDimStack::Handle & stack, FixedBitSet<size_> && c, FixedBitSet<size_> && p, unsigned cn) -> void
+    {
+        stack.push(new QueueItem<size_>{ std::move(c), std::move(p), cn });
+    }
+
+    template <unsigned size_>
+    auto process_item(
             const FixedBitGraph<size_> & graph,
-            const std::vector<int> & o,                      // vertex ordering
-            Queue<QueueItem<size_> > * const maybe_queue,    // not null if we're populating: enqueue here
-            Queue<QueueItem<size_> > * const donation_queue, // not null if we're donating: donate here
-            FixedBitSet<size_> & c,                          // current candidate clique
-            FixedBitSet<size_> & p,                          // potential additions
+            const std::vector<int> & o,
+            TwoDimStack::Handle & stack,
+            QueueItem<size_> & item,
             MaxCliqueResult & result,
             const MaxCliqueParams & params,
             AtomicBestAnywhere & best_anywhere) -> void
     {
-        std::vector<QueueItem<size_> > stack;
-        stack.push_back(QueueItem<size_>{ c, p, c.popcount() + p.popcount() });
+        if (params.abort.load())
+            return;
 
-        while (! stack.empty()) {
-            QueueItem<size_> item = std::move(stack.back());
-            stack.pop_back();
+        ++result.nodes;
 
+        unsigned best_anywhere_value = best_anywhere.get();
+        if (best_anywhere_value >= params.stop_after_finding || item.cn <= best_anywhere_value)
+            return;
+        ++result.processed_nodes;
+
+        // get our coloured vertices
+        std::array<unsigned, size_ * bits_per_word> p_order, colours;
+        colourise<size_>(graph, item.p, p_order, colours);
+
+        const auto c_popcount = item.c.popcount();
+
+        // for each v in p... (v comes later)
+        for (int n = static_cast<int>(item.p.popcount()) - 1 ; n >= 0 ; --n) {
+
+            // bound, timeout or early exit?
             if (params.abort.load())
                 return;
+            if (bound(c_popcount, colours[n], params, best_anywhere))
+                break;
 
-            ++result.nodes;
+            auto v = p_order[n];
 
-            unsigned best_anywhere_value = best_anywhere.get();
-            if (best_anywhere_value >= params.stop_after_finding)
-                return;
-            if (item.cn <= best_anywhere_value)
-                continue;
-            ++result.processed_nodes;
+            // consider taking v
+            FixedBitSet<size_> child_c = item.c;
+            child_c.set(v);
+            const auto child_c_popcount = c_popcount + 1;
 
-            // get our coloured vertices
-            std::array<unsigned, size_ * bits_per_word> p_order, colours;
-            colourise<size_>(graph, item.p, p_order, colours);
+            // filter p to contain vertices adjacent to v
+            FixedBitSet<size_> new_p = item.p;
+            graph.intersect_with_row(v, new_p);
 
-            const auto c_popcount = item.c.popcount();
-            bool chose_to_donate = false;
-
-            std::vector<QueueItem<size_> > children;
-            children.reserve(item.p.popcount());
-
-            // for each v in p... (v comes later)
-            for (int n = static_cast<int>(item.p.popcount()) - 1 ; n >= 0 ; --n) {
-
-                // bound, timeout or early exit?
-                if (params.abort.load())
-                    return;
-                if (bound(c_popcount, colours[n], params, best_anywhere))
-                    break;
-
-                auto v = p_order[n];
-
-                // consider taking v
-                FixedBitSet<size_> child_c = item.c;
-                child_c.set(v);
-                const auto child_c_popcount = c_popcount + 1;
-
-                // filter p to contain vertices adjacent to v
-                FixedBitSet<size_> new_p = item.p;
-                graph.intersect_with_row(v, new_p);
-
-                if (new_p.empty()) {
-                    found_possible_new_best(graph, o, child_c, child_c_popcount, params, result, best_anywhere);
-                }
-                else
-                {
-                    const auto cn = child_c_popcount + colours[n];
-
-                    if (maybe_queue && child_c_popcount == params.split_depth) {
-                        maybe_queue->enqueue_blocking(QueueItem<size_>{ child_c, std::move(new_p), cn }, params.n_threads);
-                    }
-                    else if (donation_queue && (chose_to_donate || donation_queue->want_donations())) {
-                        donation_queue->enqueue(QueueItem<size_>{ child_c, std::move(new_p), cn });
-                        chose_to_donate = true;
-                        ++result.donations;
-                    }
-                    else {
-                        children.push_back(QueueItem<size_>{ child_c, std::move(new_p), cn });
-                    }
-                }
-
-                // now consider not taking v
-                item.p.unset(v);
+            if (new_p.empty()) {
+                found_possible_new_best(graph, o, child_c, child_c_popcount, params, result, best_anywhere);
+            }
+            else
+            {
+                const auto cn = child_c_popcount + colours[n];
+                push_work<size_>(stack, std::move(child_c), std::move(new_p), cn);
             }
 
-            // Preserve the old recursive DFS order with a LIFO stack.
-            for (auto child = children.rbegin() ; child != children.rend() ; ++child)
-                stack.push_back(std::move(*child));
+            // now consider not taking v
+            item.p.unset(v);
         }
     }
 
     template <unsigned size_>
     auto max_clique(const FixedBitGraph<size_> & graph, const std::vector<int> & o, const MaxCliqueParams & params) -> MaxCliqueResult
     {
-        Queue<QueueItem<size_> > queue{ params.n_threads, params.work_donation }; // work queue
+        const auto n_threads = std::max(1u, params.n_threads);
+        const auto stack_depth = std::max(1u, params.stack_depth);
+        TwoDimStack work_stack{ 2 * n_threads, stack_depth };
+        termination_detection::TerminationDetection termination{ static_cast<int>(n_threads) };
 
         MaxCliqueResult result; // global result
         std::mutex result_mutex;
@@ -191,52 +173,42 @@ namespace
         AtomicBestAnywhere best_anywhere; // global incumbent
         best_anywhere.update(params.initial_bound);
 
-        std::list<std::thread> threads; // populating thread, and workers
+        std::list<std::thread> threads; // workers
 
-        /* populate */
-        threads.push_back(std::thread([&] {
-                    MaxCliqueResult tr; // local result
-
-                    FixedBitSet<size_> tc; // local candidate clique
-                    tc.resize(graph.size());
-
-                    FixedBitSet<size_> tp; // local potential additions
-                    tp.resize(graph.size());
-                    tp.set_all();
-
-                    // populate!
-                    expand<size_>(graph, o, &queue, nullptr, tc, tp, tr, params, best_anywhere);
-
-                    // merge results
-                    queue.initial_producer_done();
-                    std::unique_lock<std::mutex> guard(result_mutex);
-                    result.merge(tr);
-                    }));
-
-        /* workers */
-        for (unsigned i = 0 ; i < params.n_threads ; ++i) {
+        for (unsigned i = 0 ; i < n_threads ; ++i) {
             threads.push_back(std::thread([&, i] {
                         auto start_time = std::chrono::steady_clock::now(); // local start time
+                        auto stack = work_stack.register_thread(static_cast<int>(i));
 
                         MaxCliqueResult tr; // local result
 
-                        while (true) {
-                            // get some work to do
-                            QueueItem<size_> args;
-                            if (! queue.dequeue_blocking(args))
-                                break;
+                        if (0 == i) {
+                            FixedBitSet<size_> c; // current candidate clique
+                            c.resize(graph.size());
 
-                            // re-evaluate the bound against our new best
-                            if (args.cn <= best_anywhere.get())
-                                continue;
+                            FixedBitSet<size_> p; // potential additions
+                            p.resize(graph.size());
+                            p.set_all();
 
-                            // do some work
-                            expand<size_>(graph, o, nullptr, params.work_donation ? &queue : nullptr,
-                                    args.c, args.p, tr, params, best_anywhere);
+                            const auto cn = c.popcount() + p.popcount();
+                            push_work<size_>(stack, std::move(c), std::move(p), cn);
+                        }
 
-                            // keep track of top nodes done
-                            if (! params.abort.load())
-                                ++tr.top_nodes_done;
+                        while (termination.repeat([&] {
+                                    if (params.abort.load())
+                                        return false;
+
+                                    std::unique_ptr<QueueItem<size_> > args{ static_cast<QueueItem<size_> *>(stack.pop()) };
+                                    if (! args)
+                                        return false;
+
+                                    process_item<size_>(graph, o, stack, *args, tr, params, best_anywhere);
+
+                                    if (! params.abort.load())
+                                        ++tr.top_nodes_done;
+
+                                    return true;
+                                    })) {
                         }
 
                         auto overall_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time);
@@ -254,6 +226,10 @@ namespace
         // wait until they're done, and clean up threads
         for (auto & t : threads)
             t.join();
+
+        auto cleanup_stack = work_stack.register_thread(static_cast<int>(n_threads));
+        while (void * item = cleanup_stack.pop())
+            delete static_cast<QueueItem<size_> *>(item);
 
         return result;
     }

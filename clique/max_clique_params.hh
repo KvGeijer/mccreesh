@@ -32,6 +32,9 @@ namespace clique
         /// Splitting distance, where appropriate.
         unsigned split_depth = 1;
 
+        /// Depth parameter for the 2D stack, where appropriate.
+        unsigned stack_depth = 64;
+
         /// If true, print every time we find a better incumbent.
         bool print_candidates = false;
 

@@ -99,6 +99,7 @@ auto main(int argc, char * argv[]) -> int
             ("initial-bound",      po::value<int>(), "Specify an initial bound")
             ("print-candidates",                     "Print new best so far candidates as they are found")
             ("split-depth",        po::value<int>(), "Specify the depth at which to perform splitting (where relevant)")
+            ("stack-depth",        po::value<int>(), "Specify the depth parameter for the 2D stack (where relevant)")
             ("work-donation",                        "Enable work donation (where relevant)")
             ("timeout",            po::value<int>(), "Abort after this many seconds")
             ;
@@ -172,6 +173,9 @@ auto main(int argc, char * argv[]) -> int
 
         if (options_vars.count("split-depth"))
             params.split_depth = options_vars["split-depth"].as<int>();
+
+        if (options_vars.count("stack-depth"))
+            params.stack_depth = options_vars["stack-depth"].as<int>();
 
         if (options_vars.count("work-donation"))
             params.work_donation = true;
